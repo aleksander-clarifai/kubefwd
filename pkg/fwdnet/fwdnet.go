@@ -13,12 +13,14 @@ import (
 
 // ReadyInterface prepares a local IP address on
 // the loopback interface.
-func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int, port string) (net.IP, error) {
-
+func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int, port string, interfaceName string) (net.IP, error) {
+	if len(interfaceName) == 0 {
+		interfaceName = "lo"
+	}
 	ip, _ := fwdIp.GetIp(svcName, podName, clusterN, namespaceN)
 
 	// lo means we are probably on linux and not mac
-	_, err := net.InterfaceByName("lo")
+	_, err := net.InterfaceByName(interfaceName)
 	if err == nil || runtime.GOOS == "windows" {
 		// if no error then check to see if the ip:port are in use
 		_, err := net.Dial("tcp", ip.String()+":"+port)
@@ -29,7 +31,7 @@ func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int
 		return ip, errors.New("ip and port are in use")
 	}
 
-	networkInterface, err := net.InterfaceByName("lo0")
+	networkInterface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
 		return net.IP{}, err
 	}
@@ -55,9 +57,9 @@ func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int
 
 	// ip is not in the list of addrs for networkInterface
 	cmd := "ifconfig"
-	args := []string{"lo0", "alias", ip.String(), "up"}
+	args := []string{interfaceName, "alias", ip.String(), "up"}
 	if err := exec.Command(cmd, args...).Run(); err != nil {
-		fmt.Println("Cannot ifconfig lo0 alias " + ip.String() + " up")
+		fmt.Println("Cannot ifconfig " + interfaceName + " alias " + ip.String() + " up")
 		fmt.Println("Error: " + err.Error())
 		os.Exit(1)
 	}
@@ -73,9 +75,9 @@ func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int
 
 // RemoveInterfaceAlias can remove the Interface alias after port forwarding.
 // if -alias command get err, just print the error and continue.
-func RemoveInterfaceAlias(ip net.IP) {
+func RemoveInterfaceAlias(ip net.IP, interfaceName string) {
 	cmd := "ifconfig"
-	args := []string{"lo0", "-alias", ip.String()}
+	args := []string{interfaceName, "-alias", ip.String()}
 	if err := exec.Command(cmd, args...).Run(); err != nil {
 		// suppress for now
 		// @todo research alternative to ifconfig

@@ -16,6 +16,7 @@ limitations under the License.
 package services
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -23,19 +24,14 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"context"
 
 	"github.com/bep/debounce"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 	"github.com/txn2/kubefwd/pkg/fwdcfg"
-	"github.com/txn2/kubefwd/pkg/fwdhost"
 	"github.com/txn2/kubefwd/pkg/fwdport"
 	"github.com/txn2/kubefwd/pkg/fwdservice"
 	"github.com/txn2/kubefwd/pkg/fwdsvcregistry"
-	"github.com/txn2/kubefwd/pkg/utils"
-	"github.com/txn2/txeh"
-
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -55,6 +51,7 @@ var namespaces []string
 var contexts []string
 var verbose bool
 var domain string
+var interfaceName string
 var mappings []string
 
 func init() {
@@ -70,6 +67,7 @@ func init() {
 	Cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on; supports '=', '==', and '!=' (e.g. -l key1=value1,key2=value2).")
 	Cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output.")
 	Cmd.Flags().StringVarP(&domain, "domain", "d", "", "Append a pseudo domain name to generated host names.")
+	Cmd.Flags().StringVarP(&interfaceName, "iName", "i", "lo", "Specify network interface ip forward to")
 	Cmd.Flags().StringSliceVarP(&mappings, "mapping", "m", []string{}, "Specify a port mapping. Specify multiple mapping by duplicating this argument.")
 
 }
@@ -85,7 +83,8 @@ var Cmd = &cobra.Command{
 		"  kubefwd svc -n default -n the-project\n" +
 		"  kubefwd svc -n default -d internal.example.com\n" +
 		"  kubefwd svc -n the-project -x prod-cluster\n" +
-		"  kubefwd svc -n the-project -m 80:8080 -m 443:1443\n",
+		"  kubefwd svc -n the-project -m 80:8080 -m 443:1443\n" +
+		"  kubefwd svc -n the-project -i lo \n",
 	Run: runCmd,
 }
 
@@ -130,48 +129,7 @@ func runCmd(cmd *cobra.Command, _ []string) {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	hasRoot, err := utils.CheckRoot()
-
-	if !hasRoot {
-		log.Errorf(`
-This program requires superuser privileges to run. These
-privileges are required to add IP address aliases to your
-loopback interface. Superuser privileges are also needed
-to listen on low port numbers for these IP addresses.
-
-Try:
- - sudo -E kubefwd services (Unix)
- - Running a shell with administrator rights (Windows)
-
-`)
-		if err != nil {
-			log.Fatalf("Root check failure: %s", err.Error())
-		}
-		return
-	}
-
 	log.Println("Press [Ctrl-C] to stop forwarding.")
-	log.Println("'cat /etc/hosts' to see all host entries.")
-
-	hostFile, err := txeh.NewHostsDefault()
-	if err != nil {
-		log.Fatalf("HostFile error: %s", err.Error())
-		os.Exit(1)
-	}
-
-	log.Printf("Loaded hosts file %s\n", hostFile.ReadFilePath)
-
-	msg, err := fwdhost.BackupHostFile(hostFile)
-	if err != nil {
-		log.Fatalf("Error backing up hostfile: %s\n", err.Error())
-		os.Exit(1)
-	}
-
-	log.Printf("HostFile management: %s", msg)
-
-	if domain != "" {
-		log.Printf("Adding custom domain %s to all forwarded entries\n", domain)
-	}
 
 	// if sudo -E is used and the KUBECONFIG environment variable is set
 	// it's easy to merge with kubeconfig files in env automatic.
@@ -286,12 +244,12 @@ Try:
 				// each cluster and namespace has its own ip range
 				NamespaceIPLock:   &sync.Mutex{},
 				ListOptions:       listOptions,
-				HostFile:          &fwdport.HostFileWithLock{Hosts: hostFile},
 				ClientConfig:      *restConfig,
 				RESTClient:        *restClient,
 				ClusterN:          i,
 				NamespaceN:        ii,
 				Domain:            domain,
+				InterfaceName:     interfaceName,
 				ManualStopChannel: stopListenCh,
 				PortMapping:       mappings,
 			}
@@ -341,7 +299,8 @@ type NamespaceOpts struct {
 	NamespaceN int
 
 	// Domain is specified by the user and used in place of .local
-	Domain string
+	Domain        string
+	InterfaceName string
 	// meaning any source port maps to target port.
 	PortMapping []string
 
@@ -411,6 +370,7 @@ func (opts *NamespaceOpts) AddServiceHandler(obj interface{}) {
 		NamespaceN:           opts.NamespaceN,
 		ClusterN:             opts.ClusterN,
 		Domain:               opts.Domain,
+		InterfaceName:        opts.InterfaceName,
 		PodLabelSelector:     selector,
 		NamespaceServiceLock: opts.NamespaceIPLock,
 		Svc:                  svc,
