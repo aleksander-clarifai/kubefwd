@@ -291,11 +291,11 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 				}
 			}
 
-			log.Debugf("Resolving: %s to %s (%s)\n",
-				serviceHostName,
-				localIp.String(),
-				svcName,
-			)
+			//log.Debugf("Resolving: %s:%s to %s (%s)\n",
+			//	serviceHostName,
+			//	localIp.String(),
+			//	svcName,
+			//)
 			podKey := fmt.Sprintf("%s:%s:%s", serviceHostName, pod.Name, podPort)
 			freePort, err := freeport.Get(localIp.String(), podKey)
 			if err != nil {
@@ -309,13 +309,14 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			}
 			localPort := strconv.Itoa(freePort)
 
-			log.Printf("Port-Forward: %s:%s to pod %s:%s\n",
-				localIp.String(),
-				localPort,
-				pod.Name,
-				podPort,
-			)
+			//log.Printf("Port-Forward: %s:%s to pod %s:%s\n",
+			//	localIp.String(),
+			//	localPort,
+			//	pod.Name,
+			//	podPort,
+			//)
 
+			fmt.Println(fmt.Sprintf("%s:%s    %s:%s", svcName, podPort, localIp.String(), localPort))
 			pfo := &fwdport.PortForwardOpts{
 				Out:           publisher,
 				Config:        svcFwd.ClientConfig,
