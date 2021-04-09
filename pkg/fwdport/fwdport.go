@@ -144,9 +144,9 @@ func (pfo *PortForwardOpts) PortForward() error {
 	// if need to set timeout, set it here.
 	// restClient.Client.Timeout = 32
 	req := pfo.RESTClient.Post().
-		Resource("svc").
+		Resource("pods").
 		Namespace(pfo.Namespace).
-		Name(pfo.Service).
+		Name(pfo.PodName).
 		SubResource("portforward")
 
 	pfStopChannel := make(chan struct{}, 1)      // Signal that k8s forwarding takes as input for us to signal when to stop
