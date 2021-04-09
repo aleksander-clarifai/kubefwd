@@ -3,6 +3,7 @@ package fwdservice
 import (
 	"context"
 	"fmt"
+	"github.com/txn2/kubefwd/pkg/freeport"
 	"net"
 	"strconv"
 	"sync"
@@ -119,6 +120,23 @@ func (svcFwd *ServiceFWD) GetPodsForService() []v1.Pod {
 	return podsEligible
 }
 
+type PortTaken struct {
+	isPortTaken map[int]bool
+	lock        *sync.RWMutex
+}
+
+func (r *PortTaken) IsTaken(p int) bool {
+	r.lock.RLock()
+	defer r.lock.RUnlock()
+	return r.isPortTaken[p]
+}
+
+func (r *PortTaken) Take(p int) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.isPortTaken[p] = true
+}
+
 // SyncPodForwards selects one or all pods behind a service, and invokes
 // the forwarding setup for that or those pod(s). It will remove pods in-mem
 // that are no longer returned by k8s, should these not be correctly deleted.
@@ -149,7 +167,6 @@ func (svcFwd *ServiceFWD) SyncPodForwards(force bool) {
 				svcFwd.RemoveServicePod(podName)
 			}
 		}
-
 		// Set up port-forwarding for one or all of these pods normal service
 		// port-forward the first pod as service name. headless service not only
 		// forward first Pod as service name, but also port-forward all pods.
@@ -204,7 +221,9 @@ func (svcFwd *ServiceFWD) SyncPodForwards(force bool) {
 		sync()
 	} else {
 		// Queue sync
-		svcFwd.SyncDebouncer(sync)
+		svcFwd.SyncDebouncer(func() {
+			sync()
+		})
 	}
 }
 
@@ -220,7 +239,6 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 	// use a lock which synchronizes inside each namespace.
 	svcFwd.NamespaceServiceLock.Lock()
 	defer svcFwd.NamespaceServiceLock.Unlock()
-	isPortTaken := map[int]bool{}
 	for _, pod := range pods {
 		// If pod is already configured to be forwarded, skip it
 		if _, found := svcFwd.PortForwards[pod.Name]; found {
@@ -265,19 +283,7 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			}
 
 			podPort = port.TargetPort.String()
-			var localPort string
-			for port := 27000; port < 28000; port++ {
-				if isPortTaken[port] {
-					continue
-				}
-				conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", localIp.String(), port))
-				if err != nil {
-					localPort = strconv.Itoa(port)
-					isPortTaken[port] = true
-					break
-				}
-				_ = conn.Close()
-			}
+
 			if _, err := strconv.Atoi(podPort); err != nil {
 				// search a pods containers for the named port
 				if namedPodPort, ok := portSearch(podPort, pod.Spec.Containers); ok {
@@ -290,6 +296,18 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 				localIp.String(),
 				svcName,
 			)
+			podKey := fmt.Sprintf("%s:%s:%s", serviceHostName, pod.Name, podPort)
+			freePort, err := freeport.Get(localIp.String(), podKey)
+			if err != nil {
+				log.Warnf("WARNING: Skipped Port-Forward for %s:%d to pod %s:%s - unable to get free port",
+					serviceHostName,
+					port.Port,
+					pod.Name,
+					port.TargetPort.String(),
+				)
+				continue
+			}
+			localPort := strconv.Itoa(freePort)
 
 			log.Printf("Port-Forward: %s:%s to pod %s:%s\n",
 				localIp.String(),
