@@ -3,12 +3,10 @@ package fwdnet
 import (
 	"errors"
 	"fmt"
+	"github.com/txn2/kubefwd/pkg/fwdIp"
 	"net"
 	"os"
 	"os/exec"
-	"runtime"
-
-	"github.com/txn2/kubefwd/pkg/fwdIp"
 )
 
 // ReadyInterface prepares a local IP address on
@@ -18,18 +16,6 @@ func ReadyInterface(svcName string, podName string, clusterN int, namespaceN int
 		interfaceName = "lo"
 	}
 	ip, _ := fwdIp.GetIp(svcName, podName, clusterN, namespaceN)
-
-	// lo means we are probably on linux and not mac
-	_, err := net.InterfaceByName(interfaceName)
-	if err == nil || runtime.GOOS == "windows" {
-		// if no error then check to see if the ip:port are in use
-		_, err := net.Dial("tcp", ip.String()+":"+port)
-		if err != nil {
-			return ip, nil
-		}
-
-		return ip, errors.New("ip and port are in use")
-	}
 
 	networkInterface, err := net.InterfaceByName(interfaceName)
 	if err != nil {

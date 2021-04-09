@@ -3,6 +3,7 @@ package fwdservice
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -54,6 +55,8 @@ type ServiceFWD struct {
 
 	// Network interface name ip to forward to
 	InterfaceName string
+
+	LocalIp string
 
 	PodLabelSelector     string      // The label selector to query for matching pods.
 	NamespaceServiceLock *sync.Mutex //
@@ -234,10 +237,16 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			serviceHostName = pod.Name + "." + svcFwd.Svc.Name
 			svcName = pod.Name + "." + svcFwd.Svc.Name
 		}
+		var localIp net.IP
+		if len(svcFwd.LocalIp) != 0 {
+			localIp = net.ParseIP(svcFwd.LocalIp)
 
-		localIp, err := fwdnet.ReadyInterface(svcName, pod.Name, svcFwd.ClusterN, svcFwd.NamespaceN, podPort, svcFwd.InterfaceName)
-		if err != nil {
-			log.Warnf("WARNING: error readying interface: %s\n", err)
+		} else {
+			var err error
+			localIp, err = fwdnet.ReadyInterface(svcName, pod.Name, svcFwd.ClusterN, svcFwd.NamespaceN, podPort, svcFwd.InterfaceName)
+			if err != nil {
+				log.Warnf("WARNING: error readying interface: %s\n", err)
+			}
 		}
 
 		// if this is not the first namespace on the

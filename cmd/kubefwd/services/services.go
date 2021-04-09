@@ -52,6 +52,7 @@ var contexts []string
 var verbose bool
 var domain string
 var interfaceName string
+var localIp string
 var mappings []string
 
 func init() {
@@ -68,6 +69,7 @@ func init() {
 	Cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Verbose output.")
 	Cmd.Flags().StringVarP(&domain, "domain", "d", "", "Append a pseudo domain name to generated host names.")
 	Cmd.Flags().StringVarP(&interfaceName, "iName", "i", "lo", "Specify network interface ip forward to")
+	Cmd.Flags().StringVarP(&localIp, "localIp", "o", "127.0.0.1", "Specify ip forward to")
 	Cmd.Flags().StringSliceVarP(&mappings, "mapping", "m", []string{}, "Specify a port mapping. Specify multiple mapping by duplicating this argument.")
 
 }
@@ -250,6 +252,7 @@ func runCmd(cmd *cobra.Command, _ []string) {
 				NamespaceN:        ii,
 				Domain:            domain,
 				InterfaceName:     interfaceName,
+				LocalIp:           localIp,
 				ManualStopChannel: stopListenCh,
 				PortMapping:       mappings,
 			}
@@ -301,6 +304,7 @@ type NamespaceOpts struct {
 	// Domain is specified by the user and used in place of .local
 	Domain        string
 	InterfaceName string
+	LocalIp       string
 	// meaning any source port maps to target port.
 	PortMapping []string
 
@@ -371,6 +375,7 @@ func (opts *NamespaceOpts) AddServiceHandler(obj interface{}) {
 		ClusterN:             opts.ClusterN,
 		Domain:               opts.Domain,
 		InterfaceName:        opts.InterfaceName,
+		LocalIp:              opts.LocalIp,
 		PodLabelSelector:     selector,
 		NamespaceServiceLock: opts.NamespaceIPLock,
 		Svc:                  svc,
