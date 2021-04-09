@@ -9,7 +9,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/txn2/kubefwd/pkg/fwdnet"
 	"github.com/txn2/kubefwd/pkg/fwdport"
 	"github.com/txn2/kubefwd/pkg/fwdpub"
 	v1 "k8s.io/api/core/v1"
@@ -237,17 +236,8 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			serviceHostName = pod.Name + "." + svcFwd.Svc.Name
 			svcName = pod.Name + "." + svcFwd.Svc.Name
 		}
-		var localIp net.IP
-		if len(svcFwd.LocalIp) != 0 {
-			localIp = net.ParseIP(svcFwd.LocalIp)
 
-		} else {
-			var err error
-			localIp, err = fwdnet.ReadyInterface(svcName, pod.Name, svcFwd.ClusterN, svcFwd.NamespaceN, podPort, svcFwd.InterfaceName)
-			if err != nil {
-				log.Warnf("WARNING: error readying interface: %s\n", err)
-			}
-		}
+		localIp := net.ParseIP(svcFwd.LocalIp)
 
 		// if this is not the first namespace on the
 		// first cluster then append the namespace
@@ -275,12 +265,15 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			}
 
 			podPort = port.TargetPort.String()
-			localPort := svcFwd.getPortMap(port.Port)
-			p, err := strconv.ParseInt(localPort, 10, 32)
-			if err != nil {
-				log.Fatal(err)
+			var localPort string
+			for port := 27000; port < 28000; port++ {
+				conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", localIp.String(), port))
+				if err != nil {
+					localPort = strconv.Itoa(port)
+					break
+				}
+				_ = conn.Close()
 			}
-			port.Port = int32(p)
 			if _, err := strconv.Atoi(podPort); err != nil {
 				// search a pods containers for the named port
 				if namedPodPort, ok := portSearch(podPort, pod.Spec.Containers); ok {
@@ -294,10 +287,9 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 				svcName,
 			)
 
-			log.Printf("Port-Forward: %s %s:%d to pod %s:%s\n",
+			log.Printf("Port-Forward: %s:%s to pod %s:%s\n",
 				localIp.String(),
-				serviceHostName,
-				port.Port,
+				localPort,
 				pod.Name,
 				podPort,
 			)

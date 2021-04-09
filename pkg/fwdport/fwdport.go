@@ -11,7 +11,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/txn2/kubefwd/pkg/fwdnet"
 	"github.com/txn2/kubefwd/pkg/fwdpub"
 	"github.com/txn2/txeh"
 	v1 "k8s.io/api/core/v1"
@@ -159,7 +158,6 @@ func (pfo *PortForwardOpts) PortForward() error {
 	go func() {
 		<-pfo.ManualStopChan
 		close(downstreamStopChannel)
-		pfo.removeInterfaceAlias()
 		close(pfStopChannel)
 
 	}()
@@ -234,11 +232,6 @@ func (pfo *PortForwardOpts) PortForward() error {
 //	pfo.HostsParams.fullServiceName = fullServiceName
 //	pfo.HostsParams.svcServiceName = svcServiceName
 //}
-
-// removeInterfaceAlias called on stop signal to
-func (pfo *PortForwardOpts) removeInterfaceAlias() {
-	fwdnet.RemoveInterfaceAlias(pfo.LocalIp, pfo.InterfaceName)
-}
 
 // Waiting for the pod running
 func (pfo *PortForwardOpts) WaitUntilPodRunning(stopChannel <-chan struct{}) (*v1.Pod, error) {
