@@ -269,10 +269,13 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			for port := 27000; port < 28000; port++ {
 				conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", localIp.String(), port))
 				portStr := strconv.Itoa(port)
-				if err != nil && !isPortTaken[portStr] {
-					localPort = portStr
-					isPortTaken[localPort] = true
-					break
+				if err != nil {
+					if !isPortTaken[portStr] {
+						localPort = portStr
+						isPortTaken[localPort] = true
+						break
+					}
+					continue
 				}
 				_ = conn.Close()
 			}
