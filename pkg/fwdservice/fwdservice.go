@@ -220,7 +220,7 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 	// use a lock which synchronizes inside each namespace.
 	svcFwd.NamespaceServiceLock.Lock()
 	defer svcFwd.NamespaceServiceLock.Unlock()
-	isPortTaken := map[string]bool{}
+	isPortTaken := map[int]bool{}
 	for _, pod := range pods {
 		// If pod is already configured to be forwarded, skip it
 		if _, found := svcFwd.PortForwards[pod.Name]; found {
@@ -267,15 +267,14 @@ func (svcFwd *ServiceFWD) LoopPodsToForward(pods []v1.Pod, includePodNameInHost 
 			podPort = port.TargetPort.String()
 			var localPort string
 			for port := 27000; port < 28000; port++ {
-				conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", localIp.String(), port))
-				portStr := strconv.Itoa(port)
-				if err != nil {
-					if !isPortTaken[portStr] {
-						localPort = portStr
-						isPortTaken[localPort] = true
-						break
-					}
+				if isPortTaken[port] {
 					continue
+				}
+				conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", localIp.String(), port))
+				if err != nil {
+					localPort = strconv.Itoa(port)
+					isPortTaken[port] = true
+					break
 				}
 				_ = conn.Close()
 			}
